@@ -1,9 +1,10 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
-from sklearn.model_selection import cross_val_score
+from sklearn.model_selection import train_test_split, cross_val_score
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import precision_score, recall_score
 
 # --- Page Setup ---
 st.set_page_config(page_title="Heart Disease Project", layout="wide")
@@ -17,20 +18,27 @@ def train_and_validate():
     X = df.drop('target', axis=1)
     y = df['target']
     
+    # Split for metric calculation
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    
     # Scaling
     scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X)
+    X_train_scaled = scaler.fit_transform(X_train)
+    X_test_scaled = scaler.transform(X_test)
     
     # Initialize and Train (C=0.1 helps prevent overfitting)
     model = LogisticRegression(solver='liblinear', C=0.1)
-    model.fit(X_scaled, y)
+    model.fit(X_train_scaled, y_train)
     
-    # 5-Fold Cross-Validation for the report
-    cv_scores = cross_val_score(model, X_scaled, y, cv=5)
+    # Get Metrics for the dashboard
+    y_pred = model.predict(X_test_scaled)
+    precision = precision_score(y_test, y_pred)
+    recall = recall_score(y_test, y_pred)
+    cv_scores = cross_val_score(model, X_train_scaled, y_train, cv=5)
     
-    return model, scaler, X.columns, cv_scores
+    return model, scaler, X.columns, cv_scores, precision, recall
 
-model, scaler, feature_names, cv_scores = train_and_validate()
+model, scaler, feature_names, cv_scores, precision, recall = train_and_validate()
 
 # --- Sidebar Inputs ---
 st.sidebar.header("Patient Medical Data")
@@ -54,42 +62,58 @@ def get_user_input():
 
 input_df = get_user_input()
 
-# --- Main Interface Layout ---
+# --- Main Layout ---
 col1, col2 = st.columns([1, 1])
 
 with col1:
-    st.subheader("1. Model Prediction")
+    st.subheader("1. Diagnostic Result")
+    
     if st.button("Run Diagnostic"):
         # Scale input and predict
         input_scaled = scaler.transform(input_df)
         prediction = model.predict(input_scaled)
-        probability = model.predict_proba(input_scaled)[0][1] * 100
+        probability = model.predict_proba(input_scaled)[0][1]
         
         if prediction[0] == 1:
-            st.error(f"Prediction: Heart Disease Detected ({probability:.2f}%)")
+            st.error(f"Prediction: Heart Disease Detected ({probability:.2%})")
         else:
-            st.success(f"Prediction: No Heart Disease ({probability:.2f}%)")
+            st.success(f"Prediction: No Heart Disease ({probability:.2%})")
+            
+        st.progress(probability)
         
-        st.write(f"**Logistic Regression Intercept (Bias):** {model.intercept_[0]:.4f}")
+        # --- Local Contribution Analysis ---
+        st.write("---")
+        st.subheader("Patient-Specific Drivers")
+        
+        # Contribution = Scaled Value * Weight
+        contributions = input_scaled[0] * model.coef_[0]
+        contrib_series = pd.Series(contributions, index=feature_names).sort_values()
+        
+        top_risk = contrib_series.idxmax()
+        top_protect = contrib_series.idxmin()
+        
+        st.write(f"**Primary Risk Driver:** {top_risk}")
+        st.write(f"**Primary Protective Factor:** {top_protect}")
+        
+        with st.expander("Show mathematical breakdown"):
+            st.table(contrib_series.sort_values(ascending=False))
+            
     else:
-        st.info("Adjust values in the sidebar and click Predict.")
+        st.info("Adjust values and click Predict.")
 
 with col2:
-    st.subheader("2. Logistic Regression Coefficients")
+    st.subheader("2. Model Logic (Global Coefficients)")
     # Show feature importance visually
     importance = pd.Series(model.coef_[0], index=feature_names).sort_values()
     fig, ax = plt.subplots()
     importance.plot(kind='barh', color='#2c7bb6', ax=ax)
-    ax.set_title("Impact of Features on Model Choice")
     st.pyplot(fig)
 
-# --- Model Performance Section ---
+# --- Performance Section ---
 st.divider()
-st.subheader("3. Model Validation (5-Fold Cross-Validation)")
-perf_col1, perf_col2, perf_col3 = st.columns(3)
-
-perf_col1.metric("Average Accuracy", f"{cv_scores.mean():.2%}")
-perf_col2.metric("Stability (Std Dev)", f"{cv_scores.std():.4f}")
-perf_col3.metric("Folds Used", "5")
-
-st.write("The average accuracy of 84.63% indicates the model is robust across different data slices.")
+st.subheader("3. Model Validation Summary")
+m1, m2, m3, m4 = st.columns(4)
+m1.metric("CV Accuracy", f"{cv_scores.mean():.2%}")
+m2.metric("Stability (Std)", f"{cv_scores.std():.4f}")
+m3.metric("Precision", f"{precision:.2%}")
+m4.metric("Recall", f"{recall:.2%}")
