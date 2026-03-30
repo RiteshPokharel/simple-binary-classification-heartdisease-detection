@@ -4,11 +4,6 @@ A binary classification web app built with Streamlit that predicts heart disease
 
 ---
 
-## Demo
-
-![App Screenshot](screenshot.png)
-
----
 
 ## How It Works
 
