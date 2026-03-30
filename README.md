@@ -1,80 +1,98 @@
-# Cardiovascular Diagnostic Analysis & Explainable AI
-> **A transparent approach to medical machine learning.**
+# Heart Disease Risk Predictor
 
-This project is a diagnostic tool built to help users understand the specific clinical factors that drive heart disease risk. By using **Logistic Regression** and **Explainable AI (XAI)** principles, the application breaks down complex calculations into clear, human-centered terms.
-
----
-
-## **1. Quick Start & Installation**
-
-To get the environment ready and the app running, follow these steps:
-
-**1.1. Clone the repository**
-`git clone https://github.com/your-username/heart-disease-dashboard.git`
-`cd heart-disease-dashboard`
-
-**1.2. Install all required libraries**
-`pip install streamlit pandas scikit-learn matplotlib seaborn`
-
-**1.3. Ensure heart.csv is in the root folder**
-
-**1.4. Launch the application**
-`streamlit run app.py`
+A binary classification web app built with Streamlit that predicts heart disease risk from clinical markers. Logistic Regression, Standard Scaling, and all evaluation metrics are implemented **from scratch using NumPy only** — no scikit-learn.
 
 ---
 
-## **2. Key Features**
+## How It Works
 
-**2.1. Interactive Patient Profiling:** A dedicated sidebar to input 13 clinical markers including age, resting blood pressure, cholesterol, and ECG results.
+The model is trained on the [UCI Heart Disease dataset](https://www.kaggle.com/datasets/johnsmith88/heart-disease-dataset) using:
 
-**2.2. Explainable AI (XAI) Breakdown:** A real-time table showing exactly how each feature (Value × Weight) contributes to the final risk score.
+- **Logistic Regression** via batch gradient descent with L2 regularization
+- **Standard Scaling** (zero mean, unit variance)
+- **Stratified train/test split** (80/20)
+- **5-fold stratified cross-validation**
 
-**2.3. Clinical Health Hints:** Integrated descriptions that provide medical context, such as healthy ranges for blood pressure and fasting blood sugar.
-
-**2.4. Global Model Insights:** A horizontal bar chart illustrating which features the model generally considers most important across the entire population.
-
-**2.5. Technical Validation Panel:** Real-time performance metrics featuring Accuracy, Precision, Recall, and a visual Confusion Matrix.
-
----
-
-## **3. Technical Implementation & Logic**
-
-### **3.1. Data Source**
-The model is trained on the **UCI Heart Disease dataset**, which contains patient records with 13 features and a binary target representing the presence or absence of heart disease.
-
-### **3.2. The Model: Logistic Regression**
-We chose **Logistic Regression** for this task because of its high interpretability. In a medical context, being able to audit the "why" behind a prediction is as important as the prediction itself. Every decision in this model can be traced back to a specific coefficient.
-
-### **3.3. Feature Engineering & Scaling**
-* **Standard Scaling:** We applied a `StandardScaler` to normalize features. This prevents features with larger numerical scales (like Cholesterol) from dominating the model's coefficients.
-* **Label Formatting:** Categorical variables like Chest Pain Type and Thalassemia are mapped to their clinical descriptions for better user understanding.
+All of the following are written from scratch:
+- Sigmoid function & gradient descent loop
+- StandardScaler
+- Confusion matrix, Precision, Recall, Accuracy
+- ROC curve & AUC (trapezoidal rule)
+- Cross-validation
 
 ---
 
-## **4. Understanding the Validation**
+## Project Structure
 
-To ensure the model is robust and not "overfitting" to specific data, we implemented:
-
-**4.1. 5-Fold Cross-Validation:** This tests the model on five different subsets of the data to ensure the accuracy (typically 82% to 85%) is consistent.
-
-**4.2. Confusion Matrix:** This helps identify the specific types of errors. We focus on **Recall (Sensitivity)** because, in heart disease, a False Negative (missing a sick patient) is far more dangerous than a False Positive (a false alarm).
-
-**4.3. Precision:** Measures how often the model is correct when it predicts heart disease.
+```
+├── app.py          # Main Streamlit app
+├── heart.csv       # Dataset (UCI Heart Disease)
+└── README.md
+```
 
 ---
 
-## **5. Interpretation Guide**
+## Setup & Run
 
-When using the dashboard, the results are broken down into:
+### 1. Clone the repo
 
-**5.1. The Prediction:** A clear success or error message indicating the risk probability percentage.
+```bash
+git clone https://github.com/your-username/your-repo-name.git
+cd your-repo-name
+```
 
-**5.2. Individual Contribution:** A breakdown showing how each vital sign moved the calculation toward or away from a diagnosis.
+### 2. Install dependencies
 
-**5.3. Primary Driver:** An automated insight identifying the most significant factor for that specific patient.
+```bash
+pip install streamlit pandas numpy matplotlib seaborn
+```
+
+> Requires Python 3.8+
+
+### 3. Run the app
+
+```bash
+streamlit run app.py
+```
+
+Then open `http://localhost:8501` in your browser.
 
 ---
 
-## **6. Disclaimer**
+## Dataset
 
-This application is for educational and demonstrative purposes only. It is not intended for use in clinical diagnosis or as a substitute for professional medical advice. All data and predictions should be reviewed by a qualified healthcare professional.
+The dataset (`heart.csv`) must be in the same folder as `app.py`. It uses the UCI Heart Disease dataset available on Kaggle:
+
+[https://www.kaggle.com/datasets/johnsmith88/heart-disease-dataset](https://www.kaggle.com/datasets/johnsmith88/heart-disease-dataset)
+
+**Features used (13 original, no engineering):**
+
+| Feature | Description |
+|---|---|
+| age | Age in years |
+| sex | Sex (1 = male, 0 = female) |
+| cp | Chest pain type (0–3) |
+| trestbps | Resting blood pressure (mmHg) |
+| chol | Serum cholesterol (mg/dl) |
+| fbs | Fasting blood sugar > 120 mg/dl |
+| restecg | Resting ECG results (0–2) |
+| thalach | Maximum heart rate achieved |
+| exang | Exercise induced angina (1 = yes) |
+| oldpeak | ST depression induced by exercise |
+| slope | Slope of peak exercise ST segment |
+| ca | Number of major vessels (0–3) |
+| thal | Thalassemia (1 = fixed, 2 = normal, 3 = reversible) |
+
+**Target:** `1` = heart disease present, `0` = absent
+
+---
+
+## Dependencies
+
+| Package | Version |
+|---|---|
+| streamlit | ≥ 1.30 |
+| pandas | ≥ 1.5 |
+| numpy | ≥ 1.24 |
+| matplotlib | ≥ 3.6 |
+| seaborn | ≥ 0.12 |

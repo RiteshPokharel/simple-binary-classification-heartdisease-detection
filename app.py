@@ -2,283 +2,259 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
 import seaborn as sns
-from sklearn.model_selection import train_test_split, cross_val_score
-from sklearn.linear_model import LogisticRegression
-from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import precision_score, recall_score, confusion_matrix, roc_curve, auc
 
-# --- Page Configuration ---
-st.set_page_config(page_title="Heart Disease Analysis", layout="wide")
-st.title("Cardiovascular Diagnostic Analysis")
-st.markdown("Assess patient heart disease risk using clinical markers and explainable AI logic.")
+class StandardScaler:
+    def fit_transform(self, X):
+        self.mean_ = X.mean(axis=0)
+        self.std_ = X.std(axis=0)
+        self.std_[self.std_ == 0] = 1
+        return (X - self.mean_) / self.std_
 
-# --- Feature Engineering ---
-def engineer_features(df):
-    df = df.copy()
-    new_features = []
-
-    # 1. Age Group — clinical age risk brackets (AHA guidelines)
-    df['age_group'] = pd.cut(
-        df['age'],
-        bins=[0, 40, 55, 70, 120],
-        labels=[0, 1, 2, 3]
-    ).astype(float)
-    new_features.append('age_group')
-
-    # 2. Blood Pressure Category — JNC hypertension classification
-    df['bp_category'] = pd.cut(
-        df['trestbps'],
-        bins=[0, 120, 130, 140, 300],
-        labels=[0, 1, 2, 3]
-    ).astype(float)
-    new_features.append('bp_category')
-
-    # 3. Cholesterol Risk Flag — AHA threshold at 240 mg/dl
-    df['chol_risk'] = (df['chol'] > 240).astype(int)
-    new_features.append('chol_risk')
-
-    # 4. Heart Rate Reserve — Karvonen formula proxy for cardiovascular fitness
-    df['hr_reserve'] = (220 - df['age']) - df['thalach']
-    new_features.append('hr_reserve')
-
-    # 5. Angina-ST Interaction — compound exercise stress indicator
-    df['angina_st_combo'] = df['exang'] * df['oldpeak']
-    new_features.append('angina_st_combo')
-
-    return df, new_features
+    def transform(self, X):
+        return (X - self.mean_) / self.std_
 
 
-# --- Data Processing and Model Training ---
+class LogisticRegression:
+    def __init__(self, lr=0.1, max_iter=1000, C=1.0):
+        self.lr = lr
+        self.max_iter = max_iter
+        self.C = C
+
+    @staticmethod
+    def _sigmoid(z):
+        z = np.clip(z, -500, 500)
+        return 1 / (1 + np.exp(-z))
+
+    def fit(self, X, y):
+        n, p = X.shape
+        self.w = np.zeros(p)
+        self.b = 0.0
+        for _ in range(self.max_iter):
+            y_hat = self._sigmoid(X @ self.w + self.b)
+            err = y_hat - y
+            self.w -= self.lr * (X.T @ err / n + self.w / self.C)
+            self.b -= self.lr * err.mean()
+        self.coef_ = np.array([self.w])
+        self.intercept_ = np.array([self.b])
+
+    def predict_proba(self, X):
+        p1 = self._sigmoid(X @ self.w + self.b)
+        return np.column_stack([1 - p1, p1])
+
+    def predict(self, X):
+        return (self.predict_proba(X)[:, 1] >= 0.5).astype(int)
+
+
+
+
+def confusion_matrix_scratch(y_true, y_pred):
+    TP = int(((y_pred == 1) & (y_true == 1)).sum())
+    TN = int(((y_pred == 0) & (y_true == 0)).sum())
+    FP = int(((y_pred == 1) & (y_true == 0)).sum())
+    FN = int(((y_pred == 0) & (y_true == 1)).sum())
+    return np.array([[TN, FP], [FN, TP]])
+
+def precision_scratch(y_true, y_pred):
+    cm = confusion_matrix_scratch(y_true, y_pred)
+    TP, FP = cm[1,1], cm[0,1]
+    return TP / (TP + FP) if (TP + FP) > 0 else 0.0
+
+def recall_scratch(y_true, y_pred):
+    cm = confusion_matrix_scratch(y_true, y_pred)
+    TP, FN = cm[1,1], cm[1,0]
+    return TP / (TP + FN) if (TP + FN) > 0 else 0.0
+
+def accuracy_scratch(y_true, y_pred):
+    return float((y_true == y_pred).mean())
+
+def roc_curve_scratch(y_true, y_prob):
+    thresholds = np.sort(np.unique(y_prob))[::-1]
+    P, N = y_true.sum(), len(y_true) - y_true.sum()
+    fprs, tprs = [0.0], [0.0]
+    for t in thresholds:
+        y_pred = (y_prob >= t).astype(int)
+        TP = int(((y_pred == 1) & (y_true == 1)).sum())
+        FP = int(((y_pred == 1) & (y_true == 0)).sum())
+        tprs.append(TP / P if P > 0 else 0.0)
+        fprs.append(FP / N if N > 0 else 0.0)
+    fprs.append(1.0); tprs.append(1.0)
+    return np.array(fprs), np.array(tprs)
+
+def cross_val_score_scratch(X, y, cv=5):
+    rng = np.random.default_rng(42)
+    classes = np.unique(y)
+    class_folds = {}
+    for c in classes:
+        idx = np.where(y == c)[0]; rng.shuffle(idx)
+        class_folds[c] = np.array_split(idx, cv)
+    scores = []
+    for fold in range(cv):
+        val_idx = np.concatenate([class_folds[c][fold] for c in classes])
+        train_idx = np.setdiff1d(np.arange(len(y)), val_idx)
+        X_tr, X_val = X[train_idx], X[val_idx]
+        y_tr, y_val = y[train_idx], y[val_idx]
+        sc = StandardScaler()
+        X_tr_s = sc.fit_transform(X_tr)
+        X_val_s = sc.transform(X_val)
+        m = LogisticRegression()
+        m.fit(X_tr_s, y_tr)
+        scores.append(accuracy_scratch(y_val, m.predict(X_val_s)))
+    return np.array(scores)
+
+
+st.set_page_config(page_title="Heart Disease Predictor", layout="wide")
+st.title("Heart Disease Risk Predictor")
+st.caption("Logistic Regression implemented from scratch with NumPy — no sklearn.")
+
+
+#LOAD DATA and TRAIN
+
+
 @st.cache_data
-def train_and_validate():
+def train():
     df = pd.read_csv('heart.csv')
-    df_eng, new_features = engineer_features(df)
+    X = df.drop('target', axis=1).to_numpy().astype(float)
+    y = df['target'].to_numpy().astype(float)
+    feature_names = df.drop('target', axis=1).columns.tolist()
 
-    X = df_eng.drop('target', axis=1)
-    y = df_eng['target']
+    # Stratified train/test split
+    rng = np.random.default_rng(42)
+    train_idx, test_idx = [], []
+    for c in np.unique(y):
+        idx = np.where(y == c)[0]; rng.shuffle(idx)
+        n_test = int(len(idx) * 0.2)
+        test_idx.extend(idx[:n_test]); train_idx.extend(idx[n_test:])
+    train_idx, test_idx = np.array(train_idx), np.array(test_idx)
 
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42, stratify=y
-    )
+    X_train, X_test = X[train_idx], X[test_idx]
+    y_train, y_test = y[train_idx], y[test_idx]
 
     scaler = StandardScaler()
-    X_train_scaled = scaler.fit_transform(X_train)
-    X_test_scaled = scaler.transform(X_test)
+    X_train_s = scaler.fit_transform(X_train)
+    X_test_s  = scaler.transform(X_test)
 
-    model = LogisticRegression(solver='liblinear', C=1.0, max_iter=1000)
-    model.fit(X_train_scaled, y_train)
+    model = LogisticRegression()
+    model.fit(X_train_s, y_train)
 
-    y_pred = model.predict(X_test_scaled)
-    y_prob = model.predict_proba(X_test_scaled)[:, 1]
+    y_pred = model.predict(X_test_s)
+    y_prob = model.predict_proba(X_test_s)[:, 1]
 
-    cm = confusion_matrix(y_test, y_pred)
-    precision = precision_score(y_test, y_pred)
-    recall = recall_score(y_test, y_pred)
-    cv_scores = cross_val_score(model, X_train_scaled, y_train, cv=5)
-    fpr, tpr, _ = roc_curve(y_test, y_prob)
-    roc_auc = auc(fpr, tpr)
+    cm        = confusion_matrix_scratch(y_test, y_pred)
+    precision = precision_scratch(y_test, y_pred)
+    recall    = recall_scratch(y_test, y_pred)
+    fpr, tpr  = roc_curve_scratch(y_test, y_prob)
+    roc_auc = float(np.sum((fpr[1:] - fpr[:-1]) * tpr[1:]))
+    cv_scores = cross_val_score_scratch(X_train, y_train)
 
-    return model, scaler, X.columns.tolist(), new_features, cv_scores, precision, recall, cm, fpr, tpr, roc_auc
+    return model, scaler, feature_names, cv_scores, precision, recall, cm, fpr, tpr, roc_auc
 
-model, scaler, feature_names, new_features, cv_scores, precision, recall, cm, fpr, tpr, roc_auc = train_and_validate()
+model, scaler, feature_names, cv_scores, precision, recall, cm, fpr, tpr, roc_auc = train()
 
-# --- Patient Data Input Section ---
-st.sidebar.header("Patient Clinical Profile")
+
+
+st.sidebar.header("Patient Profile")
 
 def get_user_input():
-    inputs = {}
-    inputs['age'] = st.sidebar.slider("Patient Age", 1, 100, 50)
+    i = {}
+    i['age']      = st.sidebar.slider("Age", 1, 100, 50)
+    i['sex']      = st.sidebar.selectbox("Sex", [0,1], format_func=lambda x: "Male" if x else "Female")
+    i['cp']       = st.sidebar.selectbox("Chest Pain Type", [0,1,2,3],
+                        format_func=lambda x: {0:"Typical Angina",1:"Atypical Angina",2:"Non-anginal",3:"Asymptomatic"}[x])
+    i['trestbps'] = st.sidebar.number_input("Resting Blood Pressure (mmHg)", 80, 200, 120)
+    i['chol']     = st.sidebar.number_input("Cholesterol (mg/dl)", 100, 600, 240)
+    i['fbs']      = st.sidebar.selectbox("Fasting Blood Sugar > 120", [0,1], format_func=lambda x: "Yes" if x else "No")
+    i['restecg']  = st.sidebar.selectbox("Resting ECG", [0,1,2],
+                        format_func=lambda x: {0:"Normal",1:"ST-T Abnormality",2:"LV Hypertrophy"}[x])
+    i['thalach']  = st.sidebar.slider("Max Heart Rate", 60, 220, 150)
+    i['exang']    = st.sidebar.selectbox("Exercise Induced Angina", [0,1], format_func=lambda x: "Yes" if x else "No")
+    i['oldpeak']  = st.sidebar.slider("ST Depression", 0.0, 6.0, 1.0)
+    i['slope']    = st.sidebar.selectbox("ST Slope", [0,1,2],
+                        format_func=lambda x: {0:"Upsloping",1:"Flat",2:"Downsloping"}[x])
+    i['ca']       = st.sidebar.selectbox("Major Vessels (ca)", [0,1,2,3])
+    i['thal']     = st.sidebar.selectbox("Thalassemia", [1,2,3],
+                        format_func=lambda x: {1:"Fixed Defect",2:"Normal",3:"Reversible Defect"}[x])
+    return np.array([[i[f] for f in feature_names]], dtype=float)
 
-    inputs['sex'] = st.sidebar.selectbox("Biological Sex", [0, 1],
-        format_func=lambda x: "Male" if x == 1 else "Female")
+user_input = get_user_input()
 
-    inputs['cp'] = st.sidebar.selectbox("Chest Pain Type (cp)", [0, 1, 2, 3],
-        format_func=lambda x: {
-            0: "Typical Angina (Heart-related)",
-            1: "Atypical Angina",
-            2: "Non-anginal Pain",
-            3: "Asymptomatic (No pain)"
-        }[x], help="Type 0 is generally the highest risk indicator.")
 
-    inputs['trestbps'] = st.sidebar.number_input("Resting Blood Pressure (trestbps)", 80, 200, 120,
-        help="Values below 120 mm Hg are generally considered healthy.")
 
-    inputs['chol'] = st.sidebar.number_input("Serum Cholesterol (chol)", 100, 600, 240,
-        help="Total cholesterol under 200 mg/dl is usually healthy.")
-
-    inputs['fbs'] = st.sidebar.selectbox("Fasting Blood Sugar (fbs)", [0, 1],
-        format_func=lambda x: "Higher than 120 mg/dl" if x == 1 else "Lower than 120 mg/dl",
-        help="A value lower than 120 mg/dl is generally better for heart health.")
-
-    inputs['restecg'] = st.sidebar.selectbox("Resting ECG Results (restecg)", [0, 1, 2],
-        format_func=lambda x: {
-            0: "Normal",
-            1: "ST-T Wave Abnormality",
-            2: "Left Ventricular Hypertrophy"
-        }[x], help="A 'Normal' result is the healthy baseline.")
-
-    inputs['thalach'] = st.sidebar.slider("Maximum Heart Rate (thalach)", 60, 220, 150,
-        help="A higher maximum heart rate achieved during stress is often a sign of a stronger heart.")
-
-    inputs['exang'] = st.sidebar.selectbox("Exercise Induced Angina (exang)", [0, 1],
-        format_func=lambda x: "Yes" if x == 1 else "No",
-        help="Selecting 'No' is generally a positive indicator.")
-
-    inputs['oldpeak'] = st.sidebar.slider("ST Depression (oldpeak)", 0.0, 6.0, 1.0,
-        help="Lower values (closer to 0) are typically healthier.")
-
-    inputs['slope'] = st.sidebar.selectbox("ST Slope (slope)", [0, 1, 2],
-        format_func=lambda x: {0: "Upsloping", 1: "Flat", 2: "Downsloping"}[x],
-        help="'Upsloping' is usually the healthiest response to exercise.")
-
-    inputs['ca'] = st.sidebar.selectbox("Number of Major Vessels (ca)", [0, 1, 2, 3],
-        help="Zero (0) colored vessels is the ideal healthy result.")
-
-    inputs['thal'] = st.sidebar.selectbox("Thalassemia Result (thal)", [1, 2, 3],
-        format_func=lambda x: {
-            1: "Fixed Defect",
-            2: "Normal",
-            3: "Reversible Defect"
-        }[x], help="'Normal' is the healthy state.")
-
-    return pd.DataFrame(inputs, index=[0])
-
-user_df = get_user_input()
-
-# --- Result and Analysis Display ---
-col1, col2 = st.columns([1, 1])
+col1, col2 = st.columns(2)
 
 with col1:
-    st.subheader("Diagnostic Assessment")
-    if st.button("Generate Prediction"):
-        user_eng, _ = engineer_features(user_df)
-        user_eng = user_eng[feature_names]
+    st.subheader("Prediction")
+    if st.button("Run Prediction"):
+        x_scaled    = scaler.transform(user_input)
+        prediction  = model.predict(x_scaled)[0]
+        probability = model.predict_proba(x_scaled)[0][1]
 
-        input_scaled = scaler.transform(user_eng)
-        prediction = model.predict(input_scaled)
-        probability = model.predict_proba(input_scaled)[0][1]
-
-        bias = model.intercept_[0]
-        contributions = input_scaled[0] * model.coef_[0]
-        total_logit = bias + contributions.sum()
-
-        if prediction[0] == 1:
-            st.error(f"Detection: Heart Disease Risk Identified ({probability:.2%})")
+        if prediction == 1:
+            st.error(f"Heart Disease Risk Detected ({probability:.2%})")
         else:
-            st.success(f"Detection: No Heart Disease Risk Identified ({probability:.2%})")
-
-        st.progress(probability)
+            st.success(f"No Heart Disease Risk Detected ({probability:.2%})")
+        st.progress(float(probability))
 
         st.divider()
-        st.subheader("Individual Risk Contribution")
+        st.subheader("Feature Contributions")
+        st.caption("contribution = scaled_value × learned_weight")
 
-        m_col1, m_col2, m_col3 = st.columns(3)
-        m_col1.metric("Baseline Bias", f"{bias:.4f}")
-        m_col2.metric("Total Input Impact", f"{contributions.sum():.4f}")
-        m_col3.metric("Final Risk Score", f"{total_logit:.4f}")
+        contributions = x_scaled[0] * model.coef_[0]
+        contrib_df = pd.DataFrame({
+            'Feature': feature_names,
+            'Contribution': contributions
+        }).sort_values('Contribution', ascending=False)
 
-        st.markdown("### Feature Breakdown (Value × Weight)")
-        contrib_series = pd.Series(contributions, index=feature_names).sort_values(ascending=False)
-
-        primary_risk = contrib_series.idxmax()
-        primary_protection = contrib_series.idxmin()
-
-        st.info(f"The primary driver increasing risk is **{primary_risk}**. The primary factor lowering risk is **{primary_protection}**.")
-
-        contrib_df = contrib_series.reset_index()
-        contrib_df.columns = ['Feature', 'Contribution']
-        contrib_df['Engineered'] = contrib_df['Feature'].apply(
-            lambda x: 'Yes' if x in new_features else 'No'
-        )
-        st.table(contrib_df)
-
+        colors = ['#d62728' if v > 0 else '#2ca02c' for v in contrib_df['Contribution']]
+        fig, ax = plt.subplots(figsize=(6, 5))
+        ax.barh(contrib_df['Feature'], contrib_df['Contribution'], color=colors)
+        ax.axvline(0, color='black', linewidth=0.8)
+        ax.set_title("Risk (+) vs Protective (−) Factors")
+        ax.set_xlabel("Contribution to risk score")
+        plt.tight_layout()
+        st.pyplot(fig)
     else:
-        st.info("Adjust the patient profile and click the button to analyze risk.")
+        st.info("Set patient values in the sidebar and click Run Prediction.")
 
 with col2:
-    st.subheader("Global Model Logic")
-    importance = pd.Series(model.coef_[0], index=feature_names).sort_values()
-    colors = ['#d62728' if f in new_features else '#1f77b4' for f in importance.index]
-
-    fig, ax = plt.subplots(figsize=(8, 7))
-    importance.plot(kind='barh', color=colors, ax=ax)
-    ax.set_title("How the model weighs each factor overall")
-    blue_patch = mpatches.Patch(color='#1f77b4', label='Original feature')
-    red_patch = mpatches.Patch(color='#d62728', label='Engineered feature')
-    ax.legend(handles=[blue_patch, red_patch])
-    st.pyplot(fig)
-
-# --- Feature Engineering Section ---
-st.divider()
-st.subheader("Feature Engineering — What Was Done & Why")
-st.markdown("Five new clinically-motivated features were derived from the original 13 to give the model richer signal:")
-
-fe_data = {
-    "Feature": ["age_group", "bp_category", "chol_risk", "hr_reserve", "angina_st_combo"],
-    "Formula": [
-        "cut(age, [0,40,55,70,120])",
-        "cut(trestbps, [0,120,130,140,300])",
-        "(chol > 240).astype(int)",
-        "(220 - age) - thalach",
-        "exang × oldpeak"
-    ],
-    "Type": ["Binning", "Binning", "Binary Flag", "Interaction", "Interaction"],
-    "Rationale": [
-        "CV risk accelerates past 55 — bins capture non-linear age risk better than a raw value",
-        "Encodes JNC hypertension stages; 128 and 138 mmHg are numerically close but clinically different",
-        "AHA classifies >240 mg/dl as high risk — a threshold LR can't learn cleanly without the flag",
-        "Karvonen formula: how far below predicted max HR the patient peaked — low value = poor fitness",
-        "Angina + ST depression compound each other; their product captures combined exercise stress"
-    ]
-}
-st.table(pd.DataFrame(fe_data))
-
-# --- Validation and Technical Summary ---
-st.divider()
-st.subheader("Model Validation Summary")
-
-metric_col, cm_col = st.columns([1, 1])
-
-with metric_col:
-    st.write("Reliability Metrics")
-    p1, p2 = st.columns(2)
-    p3, p4 = st.columns(2)
-    p5, _ = st.columns(2)
-    p1.metric("Average Accuracy", f"{cv_scores.mean():.2%}")
-    p2.metric("Prediction Stability", f"{cv_scores.std():.4f}")
-    p3.metric("Precision", f"{precision:.2%}")
-    p4.metric("Recall (Sensitivity)", f"{recall:.2%}")
-    p5.metric("ROC-AUC", f"{roc_auc:.3f}")
-    st.caption("Recall measures the model's ability to identify truly sick patients.")
-
-    st.write("Cross-Validation Fold Scores")
-    fig_cv, ax_cv = plt.subplots(figsize=(5, 2.5))
-    ax_cv.bar([f'Fold {i+1}' for i in range(len(cv_scores))], cv_scores, color='#1f77b4')
-    ax_cv.axhline(cv_scores.mean(), color='red', linewidth=1.5, linestyle='--',
-                  label=f'Mean = {cv_scores.mean():.3f}')
-    ax_cv.set_ylim(0.7, 1.0)
-    ax_cv.legend()
+    st.subheader("Model Weights")
+    st.caption("Positive = increases risk, Negative = decreases risk")
+    weights = pd.Series(model.coef_[0], index=feature_names).sort_values()
+    colors  = ['#d62728' if v > 0 else '#2ca02c' for v in weights]
+    fig2, ax2 = plt.subplots(figsize=(6, 5))
+    ax2.barh(weights.index, weights.values, color=colors)
+    ax2.axvline(0, color='black', linewidth=0.8)
+    ax2.set_title("Learned Weights (global)")
+    ax2.set_xlabel("Weight value")
     plt.tight_layout()
-    st.pyplot(fig_cv)
+    st.pyplot(fig2)
 
-with cm_col:
-    st.write("Confusion Matrix (Test Data)")
+
+st.divider()
+st.subheader("Model Validation")
+
+m1, m2, m3, m4, m5 = st.columns(5)
+m1.metric("CV Accuracy",  f"{cv_scores.mean():.2%}")
+m2.metric("CV Std Dev",   f"{cv_scores.std():.4f}")
+m3.metric("Precision",    f"{precision:.2%}")
+m4.metric("Recall",       f"{recall:.2%}")
+m5.metric("ROC-AUC",      f"{roc_auc:.3f}")
+
+v1, v2 = st.columns(2)
+
+with v1:
+    st.write("Confusion Matrix")
     fig_cm, ax_cm = plt.subplots(figsize=(4, 3))
     sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', ax=ax_cm,
-                xticklabels=['Healthy', 'Sick'], yticklabels=['Healthy', 'Sick'])
-    ax_cm.set_xlabel('Predicted Label')
-    ax_cm.set_ylabel('Actual Label')
+                xticklabels=['Healthy','Sick'], yticklabels=['Healthy','Sick'])
+    ax_cm.set_xlabel('Predicted'); ax_cm.set_ylabel('Actual')
     st.pyplot(fig_cm)
 
+with v2:
     st.write("ROC Curve")
     fig_roc, ax_roc = plt.subplots(figsize=(4, 3))
     ax_roc.plot(fpr, tpr, color='#1f77b4', lw=2, label=f'AUC = {roc_auc:.3f}')
-    ax_roc.plot([0, 1], [0, 1], color='gray', lw=1, linestyle='--', label='Random baseline')
-    ax_roc.set_xlabel('False Positive Rate')
-    ax_roc.set_ylabel('True Positive Rate')
-    ax_roc.set_title('ROC Curve')
-    ax_roc.legend()
-    plt.tight_layout()
+    ax_roc.plot([0,1],[0,1], color='gray', lw=1, ls='--')
+    ax_roc.set_xlabel('FPR'); ax_roc.set_ylabel('TPR')
+    ax_roc.legend(); plt.tight_layout()
     st.pyplot(fig_roc)
