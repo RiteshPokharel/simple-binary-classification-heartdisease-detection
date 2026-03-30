@@ -4,6 +4,12 @@ A binary classification web app built with Streamlit that predicts heart disease
 
 ---
 
+## Demo
+
+![App Screenshot](screenshot.png)
+
+---
+
 ## How It Works
 
 The model is trained on the [UCI Heart Disease dataset](https://www.kaggle.com/datasets/johnsmith88/heart-disease-dataset) using:
@@ -37,8 +43,8 @@ All of the following are written from scratch:
 ### 1. Clone the repo
 
 ```bash
-git clone https://github.com/your-username/your-repo-name.git
-cd your-repo-name
+git clone https://github.com/RiteshPokharel/simple-binary-classification-heartdisease-detection.git
+cd simple-binary-classification-heartdisease-detection
 ```
 
 ### 2. Install dependencies
