@@ -24,7 +24,8 @@ class LogisticRegression:
     @staticmethod
     def _sigmoid(z):
         z = np.clip(z, -500, 500)
-        return 1 / (1 + np.exp(-z))
+        return 
+        
 
     def fit(self, X, y):
         n, p = X.shape
@@ -105,7 +106,6 @@ def cross_val_score_scratch(X, y, cv=5):
 
 st.set_page_config(page_title="Heart Disease Predictor", layout="wide")
 st.title("Heart Disease Risk Predictor")
-st.caption("Logistic Regression implemented from scratch with NumPy — no sklearn.")
 
 
 #LOAD DATA and TRAIN
