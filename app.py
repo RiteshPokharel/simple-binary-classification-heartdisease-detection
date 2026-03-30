@@ -4,6 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 
+
 class StandardScaler:
     def fit_transform(self, X):
         self.mean_ = X.mean(axis=0)
@@ -24,8 +25,7 @@ class LogisticRegression:
     @staticmethod
     def _sigmoid(z):
         z = np.clip(z, -500, 500)
-        return 
-        
+        return 1 / (1 + np.exp(-z))
 
     def fit(self, X, y):
         n, p = X.shape
@@ -45,8 +45,6 @@ class LogisticRegression:
 
     def predict(self, X):
         return (self.predict_proba(X)[:, 1] >= 0.5).astype(int)
-
-
 
 
 def confusion_matrix_scratch(y_true, y_pred):
@@ -106,19 +104,16 @@ def cross_val_score_scratch(X, y, cv=5):
 
 st.set_page_config(page_title="Heart Disease Predictor", layout="wide")
 st.title("Heart Disease Risk Predictor")
+st.caption("Logistic Regression implemented from scratch with NumPy — no sklearn.")
 
 
-#LOAD DATA and TRAIN
-
-
-@st.cache_data
+@st.cache_resource
 def train():
     df = pd.read_csv('heart.csv')
     X = df.drop('target', axis=1).to_numpy().astype(float)
     y = df['target'].to_numpy().astype(float)
     feature_names = df.drop('target', axis=1).columns.tolist()
 
-    # Stratified train/test split
     rng = np.random.default_rng(42)
     train_idx, test_idx = [], []
     for c in np.unique(y):
@@ -144,13 +139,12 @@ def train():
     precision = precision_scratch(y_test, y_pred)
     recall    = recall_scratch(y_test, y_pred)
     fpr, tpr  = roc_curve_scratch(y_test, y_prob)
-    roc_auc = float(np.sum((fpr[1:] - fpr[:-1]) * tpr[1:]))
+    roc_auc   = float(np.sum((fpr[1:] - fpr[:-1]) * tpr[1:]))
     cv_scores = cross_val_score_scratch(X_train, y_train)
 
     return model, scaler, feature_names, cv_scores, precision, recall, cm, fpr, tpr, roc_auc
 
 model, scaler, feature_names, cv_scores, precision, recall, cm, fpr, tpr, roc_auc = train()
-
 
 
 st.sidebar.header("Patient Profile")
@@ -177,7 +171,6 @@ def get_user_input():
     return np.array([[i[f] for f in feature_names]], dtype=float)
 
 user_input = get_user_input()
-
 
 
 col1, col2 = st.columns(2)
